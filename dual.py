@@ -87,12 +87,8 @@ def detect_pose_landmarks(img, pose_model):
         right_index = result.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_INDEX.value]
 
         # 좌표를 화면 상에 검은색 글씨로 크게 표시 (좌우 반전을 고려)
-        left_index_text = f"Right {left_index.y:.3f}"
-        right_index_text = f"Left {right_index.y:.3f}"
-
-        # 화면상 출력
-        # cv2.putText(img, left_index_text, (int(left_index.x * img.shape[1]) + 50, int(left_index.y * img.shape[0])), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
-        # cv2.putText(img, right_index_text, (int(right_index.x * img.shape[1]) + 50, int(right_index.y * img.shape[0])), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
+        # cv2.putText(img, Right {left_index.y:.3f}, (int(left_index.x * img.shape[1]) + 50, int(left_index.y * img.shape[0])), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
+        # cv2.putText(img, Left {right_index.y:.3f}, (int(right_index.x * img.shape[1]) + 50, int(right_index.y * img.shape[0])), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
         
         mp_drawing.draw_landmarks(img, result.pose_landmarks, mp_pose.POSE_CONNECTIONS,landmark_drawing_spec=drawing_spec,connection_drawing_spec=drawing_spec)
 
@@ -120,20 +116,32 @@ def detect_pose_landmarks(img, pose_model):
 
         hand_location_right = determine_hand_location(right_index.y, avg_eyes_y, avg_shoulders_y, avg_joints_y)
         hand_location_left = determine_hand_location(left_index.y, avg_eyes_y, avg_shoulders_y, avg_joints_y)
+        
+        # hand_info 딕셔너리에 손의 위치 정보 추가
+        if "right" in hand_info:
+            hand_info["right"]["location"] = hand_location_left  # 결과보니까 left가 맞음
+        if "left" in hand_info:
+            hand_info["left"]["location"] = hand_location_right
 
         # 콘솔창에 손의 위치 출력
-        print(f"Right Hand Location: {hand_location_right}")
-        print(f"Left Hand Location: {hand_location_left}")
+        #print(f"Right Hand Location: {hand_location_right}")
+        #print(f"Left Hand Location: {hand_location_left}")
 
         # 손의 위치를 화면에 출력
         cv2.putText(img, f"Location: {hand_location_right}", (int(right_index.x * img.shape[1]) + 50, int(right_index.y * img.shape[0]) + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
         cv2.putText(img, f"Location: {hand_location_left}", (int(left_index.x * img.shape[1]) + 50, int(left_index.y * img.shape[0]) + 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
         
     return img
-        
+
 # MediaPipe Pose model 초기화
 mp_pose = mp.solutions.pose
 pose_model = mp_pose.Pose()
+
+# 손 정보를 저장할 딕셔너리 초기화    만약 손을 인식하지 못해 현재프레임에서 이전 프레임의 hand_info를 가지고있는 경우 동작과 실제 정보가 다르게 될 수는 있음을 고려해야한다.
+hand_info = {
+    "left": {"gesture": None, "location": None},
+    "right": {"gesture": None, "location": None}
+}
 
 cap = cv2.VideoCapture(0)
 while cap.isOpened():
@@ -149,13 +157,13 @@ while cap.isOpened():
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
     if result.multi_hand_landmarks is not None:
-        rps_result = []
+        for idx, res in enumerate(result.multi_hand_landmarks):
+            # 손의 분류 정보 가져오기
+            handedness = result.multi_handedness[idx].classification[0].label
 
-        for res in result.multi_hand_landmarks:
             joint = np.zeros((21, 3))
             for j, lm in enumerate(res.landmark):
                 joint[j] = [lm.x, lm.y, lm.z]
-#수정후
             # Compute angles between joints
             v1 = joint[[0,1,2,3,0,5,6,7,0,9,10,11,0,13,14,15,0,17,18,19,2,2,0,0,0,0,2],:] # Parent joint
             v2 = joint[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,3,5,8,12,16,20,17],:] # Child joint
@@ -167,10 +175,6 @@ while cap.isOpened():
                 v[[0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,22,23,24,20],:], 
                 v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,23,24,25,26],:])) # [20,]
             angle = np.degrees(angle) # Convert radian to degree
-            
-            # thumangle = Thumangle() 
-            # thumb_add_angle = thumangle.calculate_thumb_angle(joint)
-            # angle = np.append(angle, thumb_add_angle)
             
             # Inference gesture
             data = np.array([angle], dtype=np.float32)
@@ -197,13 +201,19 @@ while cap.isOpened():
             cv2.putText(img, text=rps_gesture[this_action].upper(), org=(org[0], org[1] + 20), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,255, 255), thickness=2)
                 
             #test를 위한 코드
-            print(results)
-            print(neighbours)    
+            #print(results)
+            #print(neighbours)    
             mp_drawing.draw_landmarks(img, res, mp_hands.HAND_CONNECTIONS)
+
+            # 손의 정보를 hand_info에 저장
+            if handedness == "Left":
+                hand_info["left"]["gesture"] = rps_gesture[this_action]
+            else:
+                hand_info["right"]["gesture"] = rps_gesture[this_action]
+        # Pose Detection
+        img= detect_pose_landmarks(img, pose_model)
+        print(hand_info)
     
-    # Pose Detection
-    img = detect_pose_landmarks(img, pose_model)
-          
     cv2.imshow('Hand type', img)
     if cv2.waitKey(1) == ord('q'):
         break
