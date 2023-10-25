@@ -3,10 +3,6 @@ import mediapipe as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from thumangle import Thumangle
-##import win32api
-
-# 현재 모니터의 해상도 가져오기
-##screen_res = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
 
 max_num_hands=2
 
@@ -158,12 +154,10 @@ while cap.isOpened():
             
             if left_landmark.x < right_landmark.x:
                 left_hand_detected = True
-                print("Left hand detected: ", rps_gesture[this_action], " Hand Location: ", hand_location_left)
                 
             else:
                 right_hand_detected = True
-                print("Right hand detected: ", rps_gesture[this_action], " Hand Location: ", hand_location_right)
-
+                
             joint = np.zeros((21, 3))
             for j, lm in enumerate(res.landmark):
                 joint[j] = [lm.x, lm.y, lm.z]
@@ -180,10 +174,6 @@ while cap.isOpened():
                 v[[1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,23,24,25,26],:])) # [20,]
             angle = np.degrees(angle) # Convert radian to degree
             
-            # thumangle = Thumangle() 
-            # thumb_add_angle = thumangle.calculate_thumb_angle(joint)
-            # angle = np.append(angle, thumb_add_angle)
-            
             # Inference gesture
             data = np.array([angle], dtype=np.float32)
             ret, results, neighbours, dist = knn.findNearest(data,3)
@@ -191,21 +181,10 @@ while cap.isOpened():
             # neighbours에 있는 값들의 확률 딕셔너리 생성
             probabilities = calculate_probabilities(neighbours)
             idx = int(results[0][0]) #idx를 knn예측값으로 초기화
-           
-            #초기화한 값이 옳을 확률이 크지만 엄지를 고려한 추가 분류모델을 돌려보기.                
-            action = idx #현재동작
-            action_seq.append(action)
-            if len(action_seq) < 3:
-                continue
-            this_action = 65 #모르는 동작을 ?로 처리(굳이 이거 필요없긴함)
-            if action_seq[-1] == action_seq[-2]: #갑자기 튄 액션에 대해서 이전 액션으로 취급하는 코드
-                this_action = action
-            else:
-                this_action=action_seq[-3]
 
             # Draw gesture result
             org = (int(res.landmark[0].x * img.shape[1]), int(res.landmark[0].y * img.shape[0]))
-            cv2.putText(img, text=rps_gesture[this_action].upper(), org=(org[0], org[1] + 20), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,255, 255), thickness=2)
+            cv2.putText(img, text=rps_gesture[idx].upper(), org=(org[0], org[1] + 20), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,255, 255), thickness=2)
                 
             #test를 위한 코드
             # print("results:",results)
@@ -216,11 +195,11 @@ while cap.isOpened():
 
             # 왼손 감지 시 동작과 함께 왼손 위치 출력
             if left_hand_detected:
-                print("Left hand detected: ", rps_gesture[this_action], " Hand Location: ", hand_location_left)
+                print("Left hand detected: ", rps_gesture[idx], " Hand Location: ", hand_location_left)
 
             # 오른손 감지 시 동작과 함께 오른손 위치 출력
             elif right_hand_detected:
-                print("Right hand detected: ", rps_gesture[this_action], " Hand Location: ", hand_location_right)
+                print("Right hand detected: ", rps_gesture[idx], " Hand Location: ", hand_location_right)
           
     cv2.imshow('Hand type', img)
     if cv2.waitKey(1) == ord('q'):
